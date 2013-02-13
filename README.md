@@ -5,11 +5,17 @@ A javascript program to track individual fingers using the LEAP sensor.
 
 The program activates when all ten fingers are visible, and uses buffers to track the position of individual fingers (left pinky, left thumb, etc.) as they are recognized by the LEAP.
 The program calculates the following for each finger in each of the X, Y, and Z directions: 
+
 position
+
 velocity
+
 offsets (relationship to other fingers on that hand) 
+
 avg (average position from buffer window)
+
 median (median position for buffer window) 
+
 longavg (average position from larger buffer window)
 
 If a finger is visible to the LEAP, it is tracked by the ID that's assigned to it by the device.
