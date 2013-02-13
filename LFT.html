@@ -1,0 +1,672 @@
+<!--
+Developer : Zack Dennis (zack@asetniop.com)
+Date : 2/11/2013
+Licensed under Creative Commons Attribution-Share Alike 3.0
+-->
+
+
+<html>
+<head>
+    <!-- fill iPhone screen with canvas -->
+  <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+	<meta name = "viewport" content = "user-scalable = no">
+    <title>LEAP Finger Tracking (version 1.0)</title>
+	 <style>
+      .buttonempty{
+        position:absolute;
+        padding:10px;
+        font: 12pt Arial, serif;
+        color: #555;
+		width: 80px;
+		height: 130px;
+		left: 50%;
+        background: #deF;
+        border: 2px solid #888;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        border-bottom-left-radius: 10px;
+        border-bottom-right-radius: 10px;
+      }
+      .buttonfull{
+        color: #000;
+        background: #bcF;
+        border: 2px solid #000;
+      }
+      .activered{
+        position:absolute;
+		left: 50%;
+		width: 40px;
+		height: 40px;
+        background: #f00;
+        border: 2px solid #000;
+        border-radius: 40px;
+      }
+      .activeyellow{
+        background: #ff0;
+      }
+      .activegreen{
+        background: #0f0;
+      }
+	</style>
+
+	
+	<script type="text/javascript" src="http://asetniop.com/jquery-1.8.3.min.js"></script>
+
+
+	<!--main script -->
+    <script type="text/javascript">
+
+
+		var bufferlength = 20	// number of points used in calculating running average
+		var longbufferlength = 500	// number of points used in calculating LONG running average
+		
+		var Fingers = new Object();
+		Fingers.id = new Array();
+
+		//set up arrays to contain information about finger activity
+		Fingers.xposition = new Array();
+		Fingers.xvelocity = new Array();
+		Fingers.xoffset = new Array();
+		Fingers.xavg = new Array();
+		Fingers.xmedian = new Array();
+		Fingers.xbufferarrays = new Array();
+		Fingers.xbuffercounter = new Array();
+		Fingers.xlongavg = new Array();
+		Fingers.xlongbufferarrays = new Array();
+		Fingers.xlongbuffercounter = new Array();
+		for(var i=0; i<10; i++){
+			Fingers.xoffset[i] = new Array();
+			Fingers.xbufferarrays[i] = new Array();
+			Fingers.xbuffercounter[i] = 0; // set counter to zero
+			Fingers.xlongbufferarrays[i] = new Array();
+			Fingers.xlongbuffercounter[i] = 0; // set counter to zero
+			}
+
+		Fingers.yposition = new Array();
+		Fingers.yvelocity = new Array();
+		Fingers.yoffset = new Array();
+		Fingers.yavg = new Array();
+		Fingers.ymedian = new Array();
+		Fingers.ybufferarrays = new Array();
+		Fingers.ybuffercounter = new Array();
+		Fingers.ylongavg = new Array();
+		Fingers.ylongbufferarrays = new Array();
+		Fingers.ylongbuffercounter = new Array();
+		for(var i=0; i<10; i++){
+			Fingers.yoffset[i] = new Array();
+			Fingers.ybufferarrays[i] = new Array();
+			Fingers.ybuffercounter[i] = 0; // set counter to zero
+			Fingers.ylongbufferarrays[i] = new Array();
+			Fingers.ylongbuffercounter[i] = 0; // set counter to zero
+			}
+
+		Fingers.zposition = new Array();
+		Fingers.zvelocity = new Array();
+		Fingers.zoffset = new Array();
+		Fingers.zavg = new Array();
+		Fingers.zmedian = new Array();
+		Fingers.zbufferarrays = new Array();
+		Fingers.zbuffercounter = new Array();
+		Fingers.zlongavg = new Array();
+		Fingers.zlongbufferarrays = new Array();
+		Fingers.zlongbuffercounter = new Array();
+		for(var i=0; i<10; i++){
+			Fingers.zoffset[i] = new Array();
+			Fingers.zbufferarrays[i] = new Array();
+			Fingers.zbuffercounter[i] = 0; // set counter to zero
+			Fingers.zlongbufferarrays[i] = new Array();
+			Fingers.zlongbuffercounter[i] = 0; // set counter to zero
+			}
+
+function hypotenuse(x1, x2, y1, y2){
+	var distance = Math.sqrt((x1 - x2)*(x1 - x2) + (y1 - y2)*(y1 - y2));
+	return distance;
+	}
+
+function median(values){ // this function may make things slow if large arrays (i.e. long buffer lengths) are used
+	values.sort( function(a,b) {return a - b;} );
+	var half = Math.floor(values.length/2);
+	if(values.length % 2){
+		return values[half];
+		}
+	else{
+		return (values[half-1] + values[half]) / 2.0;
+		}
+	}	
+
+function average(values){
+	var sum = values.reduce(function(a, b) { return a + b });
+	var average = sum / values.length;
+	return average
+	}		
+		
+function init() {
+		
+	var idArray = new Array();
+
+	//code from LEAP's javascript demo	
+	//Create and open the socket
+	ws = new WebSocket("ws://localhost:6437/");
+  
+	// On successful connection
+	ws.onopen = function(event) {
+		//document.getElementById("main").style.visibility = "visible";
+		//document.getElementById("connection").innerHTML = "WebSocket connection open!";
+		};
+  
+	// On message received
+	ws.onmessage = function(event) {
+    var obj = JSON.parse(event.data);
+	var NumFingers = obj.pointables.length;
+  
+	for(var i=0; i<10; i++){	//sets up page elements to as blank
+		$("#finger"+i+"id").html("ID: ---");
+		$("#finger"+i+"x").html("X: ---");	
+		$("#finger"+i+"y").html("Y: ---");
+		$("#finger"+i+"z").html("Z: ---");
+		$("#finger"+i+"xavg").html("Xavg: ---");	
+		$("#finger"+i+"yavg").html("Yavg: ---");	
+		$("#finger"+i+"zavg").html("Zavg: ---");
+		}
+	
+	if(NumFingers == 0){
+		$("#activeleft").removeClass("activegreen");
+		$("#activeleft").removeClass("activeyellow");
+		$("#activeright").removeClass("activegreen");
+		$("#activeright").removeClass("activeyellow");
+		}
+	
+	if(NumFingers == 10){ //only calculates "home" averages and relative offsets and assigns ID's if all fingers are accounted for	
+
+		var FingerLocationRaw = new Array();
+
+		for(var i=0; i<NumFingers; i++){
+			FingerLocationRaw[i] = obj.pointables[i].tipPosition;
+			FingerLocationRaw[i].id = obj.pointables[i].id;
+			FingerLocationRaw[i].tipVelocity = obj.pointables[i].tipVelocity;
+			}
+		
+		//sort fingers from left to right based on x position
+		FingerLocationRaw.sort(function(a, b)
+			{if(a[0] == b[0]) return 0;
+			return a[0] < b[0] ? -1 : 1;
+			});
+			
+		for(var i=0; i<10; i++){	
+
+			//set base positions and ID's
+			Fingers.xposition[i] = FingerLocationRaw[i][0]; 
+			Fingers.yposition[i] = FingerLocationRaw[i][1]; 
+			Fingers.zposition[i] = FingerLocationRaw[i][2]; 
+			Fingers.xvelocity[i] = FingerLocationRaw[i].tipVelocity[0]; 
+			Fingers.yvelocity[i] = FingerLocationRaw[i].tipVelocity[1]; 
+			Fingers.zvelocity[i] = FingerLocationRaw[i].tipVelocity[2]; 
+			Fingers.id[i] = FingerLocationRaw[i].id;			
+						
+			//base average calculations
+			Fingers.xbufferarrays[i][Fingers.xbuffercounter[i]] = FingerLocationRaw[i][0];
+			Fingers.xbuffercounter[i] += 1;
+			if(Fingers.xbuffercounter[i] == bufferlength){
+				Fingers.xbuffercounter[i] = 0;}
+			Fingers.xavg[i] = average(Fingers.xbufferarrays[i])
+			Fingers.xmedian[i] = median(Fingers.xbufferarrays[i])
+				
+			Fingers.ybufferarrays[i][Fingers.ybuffercounter[i]] = FingerLocationRaw[i][1];
+			Fingers.ybuffercounter[i] += 1;
+			if(Fingers.ybuffercounter[i] == bufferlength){
+				Fingers.ybuffercounter[i] = 0;}
+			Fingers.yavg[i] = average(Fingers.ybufferarrays[i])
+			Fingers.ymedian[i] = median(Fingers.ybufferarrays[i])
+			
+			Fingers.zbufferarrays[i][Fingers.zbuffercounter[i]] = FingerLocationRaw[i][2];
+			Fingers.zbuffercounter[i] += 1;
+			if(Fingers.zbuffercounter[i] == bufferlength){
+				Fingers.zbuffercounter[i] = 0;}
+			Fingers.zavg[i] = average(Fingers.zbufferarrays[i])
+			Fingers.zmedian[i] = median(Fingers.zbufferarrays[i])
+			
+			//long average calculation - only occurs when finger position is KNOWN - will not be extrapolated
+			Fingers.xlongbufferarrays[i][Fingers.xlongbuffercounter[i]] = FingerLocationRaw[i][0];
+			Fingers.xlongbuffercounter[i] += 1;
+			if(Fingers.xlongbuffercounter[i] == longbufferlength){
+				Fingers.xlongbuffercounter[i] = 0;}
+			Fingers.xlongavg[i] = average(Fingers.xlongbufferarrays[i])
+				
+			Fingers.ylongbufferarrays[i][Fingers.ylongbuffercounter[i]] = FingerLocationRaw[i][1];
+			Fingers.ylongbuffercounter[i] += 1;
+			if(Fingers.ylongbuffercounter[i] == longbufferlength){
+				Fingers.ylongbuffercounter[i] = 0;}
+			Fingers.ylongavg[i] = average(Fingers.ylongbufferarrays[i])
+			
+			Fingers.zlongbufferarrays[i][Fingers.zlongbuffercounter[i]] = FingerLocationRaw[i][2];
+			Fingers.zlongbuffercounter[i] += 1;
+			if(Fingers.zlongbuffercounter[i] == longbufferlength){
+				Fingers.zlongbuffercounter[i] = 0;}
+			Fingers.zlongavg[i] = average(Fingers.zlongbufferarrays[i])
+			
+			//updates webpage display elements
+			$("#button"+i).addClass("buttonfull");
+			$("#finger"+i+"id").html("ID: " + Fingers.id[i]);	
+			$("#finger"+i+"x").html("X: " + Math.round(Fingers.xposition[i]));
+			$("#finger"+i+"y").html("Y: " + Math.round(Fingers.yposition[i]));
+			$("#finger"+i+"z").html("Z: " + Math.round(Fingers.zposition[i]));
+			$("#finger"+i+"xavg").html("Xavg: " + Math.round(Fingers.xavg[i]));
+			$("#finger"+i+"yavg").html("Yavg: " + Math.round(Fingers.yavg[i]));
+			$("#finger"+i+"zavg").html("Zavg: " + Math.round(Fingers.zavg[i]));
+			}
+		$("#activeleft").addClass("activegreen");
+		$("#activeright").addClass("activegreen");
+		
+		//calculate offsets (position relative to other fingers) for left hand and right hand separately
+		for(var i=0; i<5; i++){	
+			for(var j=0; j<5; j++){
+				Fingers.xoffset[i][j] = Fingers.xavg[i] - Fingers.xavg[j];
+				Fingers.yoffset[i][j] = Fingers.yavg[i] - Fingers.yavg[j];
+				Fingers.zoffset[i][j] = Fingers.zavg[i] - Fingers.zavg[j];
+				}
+			}
+		for(var i=5; i<10; i++){	
+			for(var j=0; j<5; j++){
+				Fingers.xoffset[i][j] = Fingers.xavg[i] - Fingers.xavg[j+5];
+				Fingers.yoffset[i][j] = Fingers.yavg[i] - Fingers.yavg[j+5];
+				Fingers.zoffset[i][j] = Fingers.zavg[i] - Fingers.zavg[j+5];
+				}
+			}
+		}
+		
+	else if(NumFingers < 10){
+
+		var idArray = new Array();
+		var FingerLocationRaw = new Array();
+		
+		for(var i=0; i<NumFingers; i++){
+			idArray[i] = obj.pointables[i].id;
+			FingerLocationRaw[i] = obj.pointables[i].tipPosition;
+			FingerLocationRaw[i].id = obj.pointables[i].id;
+			FingerLocationRaw[i].tipVelocity = obj.pointables[i].tipVelocity;
+			}
+		
+		//sort fingers from left to right based on x position
+		FingerLocationRaw.sort(function(a, b)
+			{if(a[0] == b[0]) return 0;
+			return a[0] < b[0] ? -1 : 1;
+			});
+		
+		//set up arrays for missing fingers (i.e. fingers that are not currently visible to the LEAP)
+		var Empty = new Object();
+		Empty.finger = new Array();
+		Empty.xavg = new Array();
+		Empty.zavg = new Array();
+		var counter = 0;
+		
+		//checks and reorders fingers that are visible - occupied fingers won't change, but will be ordered from left to right based on x-coordinates
+		var fingercounter = 0;
+		
+		for(var i=0; i<10; i++){ // deals with fingers that have persisted
+			idindex = idArray.indexOf(Fingers.id[i]);
+			if(idindex > -1){
+				//sets positions	
+				Fingers.xposition[i] = FingerLocationRaw[fingercounter][0];
+				Fingers.yposition[i] = FingerLocationRaw[fingercounter][1];
+				Fingers.zposition[i] = FingerLocationRaw[fingercounter][2];
+				Fingers.xvelocity[i] = FingerLocationRaw[fingercounter].tipVelocity[0]; 
+				Fingers.yvelocity[i] = FingerLocationRaw[fingercounter].tipVelocity[1]; 
+				Fingers.zvelocity[i] = FingerLocationRaw[fingercounter].tipVelocity[2]; 
+				fingercounter += 1;
+				
+				//updates running averages calculation
+			
+				Fingers.xbufferarrays[i][Fingers.xbuffercounter[i]] = Fingers.xposition[i];
+				Fingers.xbuffercounter[i] += 1;
+				if(Fingers.xbuffercounter[i] == bufferlength){
+					Fingers.xbuffercounter[i] = 0;}
+				Fingers.xavg[i] = average(Fingers.xbufferarrays[i])
+				Fingers.xmedian[i] = median(Fingers.xbufferarrays[i])
+					
+				Fingers.ybufferarrays[i][Fingers.ybuffercounter[i]] = Fingers.yposition[i];
+				Fingers.ybuffercounter[i] += 1;
+				if(Fingers.ybuffercounter[i] == bufferlength){
+					Fingers.ybuffercounter[i] = 0;}
+				Fingers.yavg[i] = average(Fingers.ybufferarrays[i])
+				Fingers.ymedian[i] = median(Fingers.ybufferarrays[i])
+				
+				Fingers.zbufferarrays[i][Fingers.zbuffercounter[i]] = Fingers.zposition[i];
+				Fingers.zbuffercounter[i] += 1;
+				if(Fingers.zbuffercounter[i] == bufferlength){
+					Fingers.zbuffercounter[i] = 0;}
+				Fingers.zavg[i] = average(Fingers.zbufferarrays[i])
+				Fingers.zmedian[i] = median(Fingers.zbufferarrays[i])
+				
+				//updates long average calculation
+				Fingers.xlongbufferarrays[i][Fingers.xlongbuffercounter[i]] = Fingers.xposition[i];
+				Fingers.xlongbuffercounter[i] += 1;
+				if(Fingers.xlongbuffercounter[i] == longbufferlength){
+					Fingers.xlongbuffercounter[i] = 0;}
+				Fingers.xlongavg[i] = average(Fingers.xlongbufferarrays[i])
+					
+				Fingers.ylongbufferarrays[i][Fingers.ylongbuffercounter[i]] = Fingers.yposition[i];
+				Fingers.ylongbuffercounter[i] += 1;
+				if(Fingers.ylongbuffercounter[i] == longbufferlength){
+					Fingers.ylongbuffercounter[i] = 0;}
+				Fingers.ylongavg[i] = average(Fingers.ylongbufferarrays[i])
+				
+				Fingers.zlongbufferarrays[i][Fingers.zlongbuffercounter[i]] = Fingers.zposition[i];
+				Fingers.zlongbuffercounter[i] += 1;
+				if(Fingers.zlongbuffercounter[i] == longbufferlength){
+					Fingers.zlongbuffercounter[i] = 0;}
+				Fingers.zlongavg[i] = average(Fingers.zlongbufferarrays[i])
+				
+				//updates offset distances for fingers that are visible
+				if(i < 5){
+					for(var j=0; j<5; j++){
+						if(Fingers.id[j] > 0){ // sees if other finger is visible, if so then it updates
+						Fingers.xoffset[i][j] = Fingers.xavg[i] - Fingers.xavg[j];
+						Fingers.yoffset[i][j] = Fingers.yavg[i] - Fingers.yavg[j];
+						Fingers.zoffset[i][j] = Fingers.zavg[i] - Fingers.zavg[j];
+							}
+						}
+					}
+				else{
+					for(var j=0; j<5; j++){
+						if(Fingers.id[j+5] > 0){ // sees if other finger is visible, if so then it updates
+						Fingers.xoffset[i][j] = Fingers.xavg[i] - Fingers.xavg[j+5];
+						Fingers.yoffset[i][j] = Fingers.yavg[i] - Fingers.yavg[j+5];
+						Fingers.zoffset[i][j] = Fingers.zavg[i] - Fingers.zavg[j+5];
+							}
+						}
+					}
+				
+				
+				//updates webpage display element
+				$("#button"+i).addClass("buttonfull");
+				$("#finger"+i+"id").html("ID: " + Fingers.id[i]);	
+				$("#finger"+i+"x").html("X: " + Math.round(Fingers.xposition[i]));
+				$("#finger"+i+"y").html("Y: " + Math.round(Fingers.yposition[i]));
+				$("#finger"+i+"z").html("Z: " + Math.round(Fingers.zposition[i]));
+				$("#finger"+i+"xavg").html("Xavg: " + Math.round(Fingers.xavg[i]));
+				$("#finger"+i+"yavg").html("Yavg: " + Math.round(Fingers.yavg[i]));
+				$("#finger"+i+"zavg").html("Zavg: " + Math.round(Fingers.zavg[i]));
+				}
+			else{
+				Fingers.id[i] = 0; //if finger is not visible, sets ID to zero
+				Fingers.xvelocity[i] = 0; 
+				Fingers.yvelocity[i] = 0; 
+				Fingers.zvelocity[i] = 0; 
+				
+				//changes button appearance
+				$("#button"+i).removeClass("buttonfull");
+				
+				//sets up arrays for where fingertip is expected to be if it was visible, based on relative positions of other visible elements
+				var xExpected = new Array();
+				var yExpected = new Array();
+				var zExpected = new Array();
+				var ExpectedCounter = 0;
+				
+				if(i < 5){
+					for(var j=0; j<5; j++){
+						if(Fingers.id[j] > 0){ // sees if other finger is visible, if so then it establishes a position based on the original offset and the new position.
+							xExpected[ExpectedCounter] = Fingers.xavg[j] + Fingers.xoffset[i][j];
+							yExpected[ExpectedCounter] = Fingers.yavg[j] + Fingers.yoffset[i][j];
+							zExpected[ExpectedCounter] = Fingers.zavg[j] + Fingers.zoffset[i][j];
+							ExpectedCounter+=1;
+							}
+						}
+					}
+				else{
+					for(var j=0; j<5; j++){
+						if(Fingers.id[j+5] > 0){ 
+							xExpected[ExpectedCounter] = Fingers.xavg[j+5] + Fingers.xoffset[i][j];
+							yExpected[ExpectedCounter] = Fingers.yavg[j+5] + Fingers.yoffset[i][j];
+							zExpected[ExpectedCounter] = Fingers.zavg[j+5] + Fingers.zoffset[i][j];
+							ExpectedCounter+=1;
+							}
+						}
+					}
+				
+				if(ExpectedCounter > 0){ //only uses offsets to calculate expected position if other fingers on hand are visible; otherwise defaults to last available position (i.e. does not update)
+					var xExpectedsum = xExpected.reduce(function(a, b) { return a + b });
+					var yExpectedsum = yExpected.reduce(function(a, b) { return a + b });
+					var zExpectedsum = zExpected.reduce(function(a, b) { return a + b });
+					Fingers.xavg[i] = xExpectedsum / xExpected.length;
+					Fingers.yavg[i] = yExpectedsum / yExpected.length;
+					Fingers.zavg[i] = zExpectedsum / zExpected.length;
+					}
+				
+				Empty.finger[counter] = i;
+				Empty.xavg[counter] = Fingers.xavg[i];
+				Empty.zavg[counter] = Fingers.zavg[i];
+				counter += 1;
+				}
+				
+			//updates webpage display element to show expected position
+			$("#finger"+i+"xavg").html("Xavg: " + Math.round(Fingers.xavg[i]));
+			$("#finger"+i+"yavg").html("Yavg: " + Math.round(Fingers.yavg[i]));
+			$("#finger"+i+"zavg").html("Zavg: " + Math.round(Fingers.zavg[i]));
+			}
+			
+			//set up arrays for unassigned fingers (i.e. fingers that have disappeared and reappeared subsequently) - will usually only contain one element
+			var Unassigned = new Object();
+			Unassigned.id = new Array();
+			Unassigned.xposition = new Array();
+			Unassigned.zposition = new Array();
+			var counter = 0;
+			
+			for(var i=0; i<NumFingers; i++){
+				FingersArray = Fingers.id;
+				idindex = FingersArray.indexOf(idArray[i]);
+				if(idindex == -1){
+					Unassigned.id[counter] = idArray[i]; 
+					Unassigned.xposition[counter] = obj.pointables[i].tipPosition[0];
+					Unassigned.zposition[counter] = obj.pointables[i].tipPosition[2];
+					counter += 1;
+					}
+				}
+			
+			//set up arrays to calculate the distance between the unassigned finger(s) and the expected tip position
+			var MinimumObject = new Object();
+			MinimumObject.id = new Array();	
+			MinimumObject.finger = new Array();	
+			MinimumObject.separation = new Array();	
+			counter = 0;
+			
+			for(var j=0; j<Unassigned.id.length; j++){
+				for(var i=0; i<Empty.finger.length; i++){
+					MinimumObject.id[counter] = Unassigned.id[j];
+					MinimumObject.finger[counter] = Empty.finger[i];
+					MinimumObject.separation[counter] = hypotenuse(Unassigned.xposition[j], Empty.xavg[i], Unassigned.zposition[j], Empty.zavg[i]);
+					counter += 1;
+					}
+				}
+			
+			//reassigns unassigned finger that is closest to expected/previous tip position; other information and/or unassigned fingers will be updated during next pass
+			MinimumArray = MinimumObject.separation
+			idindex = MinimumArray.indexOf(Math.min.apply(Math, MinimumArray));
+			Fingers.id[MinimumObject.finger[idindex]] = MinimumObject.id[idindex];
+
+			//light up buttons to show state of hands - green if all fingers on hand are visible OR fingers have disappeared but haven't reappeared; yellow if fingers have disappeared and reappeared but not all fingers on hand are visisble, red if entire hand has disappeared
+			//left hand
+			var arraysum = 0;
+			var arrayprod = 1;
+			for (i = 0; i < 5; i += 1) {
+				arraysum += Fingers.id[i];
+				arrayprod *= Fingers.id[i];
+				}
+			if(arraysum == 0){ // if hand is empty, red
+				$("#activeleft").removeClass("activegreen");
+				$("#activeleft").removeClass("activeyellow");
+				}
+			else if (arrayprod == 0){ // if hand is incomplete and finger has returned, yellow
+				if(Unassigned.id.length > 0){
+					if(MinimumObject.finger[idindex] < 5){
+						$("#activeleft").removeClass("activegreen");
+						$("#activeleft").addClass("activeyellow");
+						}
+					}
+				}
+			else{ // if hand is full, green
+				$("#activeleft").addClass("activegreen");
+				$("#activeleft").removeClass("activeyellow");
+				}
+
+			//right hand	
+			var arraysum = 0;
+			var arrayprod = 1;
+			for (i = 5; i < 10; i += 1) {
+				arraysum += Fingers.id[i];
+				arrayprod *= Fingers.id[i];
+				}
+			if(arraysum == 0){ // if hand is empty, red
+				$("#activeright").removeClass("activegreen");
+				$("#activeright").removeClass("activeyellow");
+				}
+			else if (arrayprod == 0){ // if hand is incomplete and finger has returned, yellow
+				if(Unassigned.id.length > 0){
+					if(MinimumObject.finger[idindex] >= 5){
+						$("#activeright").removeClass("activegreen");
+						$("#activeright").addClass("activeyellow");
+						}
+					}
+				}
+			else{ // if hand is full, green
+				$("#activeright").addClass("activegreen");
+				$("#activeright").removeClass("activeyellow");
+				}
+				
+				
+		}
+		
+	else if(NumFingers > 10){ // if more than ten fingers are visible, doesn't respond at all
+		for(var i=0; i<10; i++){
+			$("#button"+i).removeClass("buttonfull");
+			}
+		}
+
+	};
+	  
+	// On socket close
+	ws.onclose = function(event) {
+		ws = null;
+		//document.getElementById("main").style.visibility = "hidden";
+		//document.getElementById("connection").innerHTML = "WebSocket connection closed";
+		}
+	  
+	 //On socket error
+	ws.onerror = function(event) {
+		alert("Received error");
+		};
+	
+}
+		
+			
+		
+    </script>
+ 
+</head>
+<body onload="init()">
+
+
+<div id="button0"; style="bottom: 180px; margin-left:-500px" class="buttonempty">
+<div id="finger0id">ID: ---<br></div>
+<div id="finger0x">X: ---<br></div>
+<div id="finger0y">Y: ---<br></div>
+<div id="finger0z">Z: ---<br></div>
+<div id="finger0xavg">Xavg: ---<br></div>
+<div id="finger0yavg">Yavg: ---<br></div>
+<div id="finger0zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button1"; style="bottom: 220px; margin-left:-390px" class="buttonempty">
+<div id="finger1id">ID: ---<br></div>
+<div id="finger1x">X: ---<br></div>
+<div id="finger1y">Y: ---<br></div>
+<div id="finger1z">Z: ---<br></div>
+<div id="finger1xavg">Xavg: ---<br></div>
+<div id="finger1yavg">Yavg: ---<br></div>
+<div id="finger1zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button2"; style="bottom: 240px; margin-left:-280px" class="buttonempty">
+<div id="finger2id">ID: ---<br></div>
+<div id="finger2x">X: ---<br></div>
+<div id="finger2y">Y: ---<br></div>
+<div id="finger2z">Z: ---<br></div>
+<div id="finger2xavg">Xavg: ---<br></div>
+<div id="finger2yavg">Yavg: ---<br></div>
+<div id="finger2zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button3"; style="bottom: 220px; margin-left:-170px" class="buttonempty">
+<div id="finger3id">ID: ---<br></div>
+<div id="finger3x">X: ---<br></div>
+<div id="finger3y">Y: ---<br></div>
+<div id="finger3z">Z: ---<br></div>
+<div id="finger3xavg">Xavg: ---<br></div>
+<div id="finger3yavg">Yavg: ---<br></div>
+<div id="finger3zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button4"; style="bottom: 40px; margin-left:-120px; width: 90px; padding-left: 15px;" class="buttonempty">
+<div id="finger4id">ID: ---<br></div>
+<div id="finger4x">X: ---<br></div>
+<div id="finger4y">Y: ---<br></div>
+<div id="finger4z">Z: ---<br></div>
+<div id="finger4xavg">Xavg: ---<br></div>
+<div id="finger4yavg">Yavg: ---<br></div>
+<div id="finger4zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button5"; style="bottom: 40px; margin-left:20px; width: 90px; padding-left: 15px;" class="buttonempty">
+<div id="finger5id">ID: ---<br></div>
+<div id="finger5x">X: ---<br></div>
+<div id="finger5y">Y: ---<br></div>
+<div id="finger5z">Z: ---<br></div>
+<div id="finger5xavg">Xavg: ---<br></div>
+<div id="finger5yavg">Yavg: ---<br></div>
+<div id="finger5zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button6"; style="bottom: 220px; margin-left:70px" class="buttonempty">
+<div id="finger6id">ID: ---<br></div>
+<div id="finger6x">X: ---<br></div>
+<div id="finger6y">Y: ---<br></div>
+<div id="finger6z">Z: ---<br></div>
+<div id="finger6xavg">Xavg: ---<br></div>
+<div id="finger6yavg">Yavg: ---<br></div>
+<div id="finger6zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button7"; style="bottom: 240px; margin-left:180px" class="buttonempty">
+<div id="finger7id">ID: ---<br></div>
+<div id="finger7x">X: ---<br></div>
+<div id="finger7y">Y: ---<br></div>
+<div id="finger7z">Z: ---<br></div>
+<div id="finger7xavg">Xavg: ---<br></div>
+<div id="finger7yavg">Yavg: ---<br></div>
+<div id="finger7zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button8"; style="bottom: 220px; margin-left:290px" class="buttonempty">
+<div id="finger8id">ID: ---<br></div>
+<div id="finger8x">X: ---<br></div>
+<div id="finger8y">Y: ---<br></div>
+<div id="finger8z">Z: ---<br></div>
+<div id="finger8xavg">Xavg: ---<br></div>
+<div id="finger8yavg">Yavg: ---<br></div>
+<div id="finger8zavg">Zavg: ---<br></div>
+</div>
+
+<div id="button9"; style="bottom: 180px; margin-left:400px" class="buttonempty">
+<div id="finger9id">ID: ---<br></div>
+<div id="finger9x">X: ---<br></div>
+<div id="finger9y">Y: ---<br></div>
+<div id="finger9z">Z: ---<br></div>
+<div id="finger9xavg">Xavg: ---<br></div>
+<div id="finger9yavg">Yavg: ---<br></div>
+<div id="finger9zavg">Zavg: ---<br></div>
+</div>
+
+<div id="activeleft" style="position: absolute; bottom: 100px; margin-left:-270px" class="activered"></div>
+<div id="activeright" style="position: absolute; bottom: 100px; margin-left:230px" class="activered"></div>
+  
+</body>
+</html>	
